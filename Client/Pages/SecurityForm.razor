@@ -1,0 +1,151 @@
+﻿@page "/securities/add"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<h3>New Security</h3>
+
+<EditForm Model="security" OnValidSubmit="HandleSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label>Ticker</label>
+        <InputText @bind-Value="security.Ticker" class="form-control" @onblur="LookupSecurity" />
+        <ValidationMessage For="@(() => security.Ticker)" />
+        @if (!string.IsNullOrEmpty(lookupError))
+        {
+            <span class="text-danger">@lookupError</span>
+        }
+    </div>
+
+    <div class="form-group">
+        <label>ISIN (optional)</label>
+        <InputText @bind-Value="security.Isin" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label>Name</label>
+        <InputText @bind-Value="security.Name" class="form-control" />
+        <ValidationMessage For="@(() => security.Name)" />
+    </div>
+    <div class="form-group">
+        <label>Asset Type</label>
+        <InputSelect @bind-Value="security.AssetTypeId" class="form-control">
+            <option value="">Select type...</option>
+            @foreach (var type in assetTypes)
+            {
+                <option value="@type.Id">@type.Name</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => security.AssetTypeId)" />
+    </div>
+    <button type="submit" class="btn btn-primary" disabled="@(isTickerValid != true)">Save</button>
+    <button type="button" class="btn btn-secondary ms-2" @onclick="Cancel">Cancel</button>
+</EditForm>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private SecurityDto security = new();
+    private List<AssetTypeDto>? assetTypes;
+    private string? lookupError;
+    private string? errorMessage;
+    private bool? isTickerValid; // null - еще не проверяли, true - ок, false - ошибка
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            assetTypes = await Http.GetFromJsonAsync<List<AssetTypeDto>>("api/assettypes") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load asset types: {ex.Message}";
+            assetTypes = new();
+        }
+    }
+
+    private async Task LookupSecurity()
+    {
+        if (string.IsNullOrWhiteSpace(security.Ticker))
+        {
+            isTickerValid = null;
+            lookupError = null;
+            return;
+        }
+
+        // Нормализуем тикер: большие буквы, без пробелов
+        security.Ticker = security.Ticker.Trim().ToUpperInvariant();
+
+        lookupError = null;
+        isTickerValid = null;
+        try
+        {
+            var info = await Http.GetFromJsonAsync<SecurityDto>($"api/securities/lookup?ticker={security.Ticker}");
+            if (info != null)
+            {
+                security.Ticker = info.Ticker;
+                security.Isin = info.Isin;
+                security.Name = info.Name;
+                security.AssetTypeId = info.AssetTypeId;
+                isTickerValid = true;
+                lookupError = null;
+            }
+            else
+            {
+                lookupError = "Security not found on MOEX.";
+                isTickerValid = false;
+                // Очищаем поля, чтобы не сохранить невалидные данные
+                security.Isin = null;
+                security.Name = string.Empty;
+                security.AssetTypeId = 0;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            lookupError = "Failed to communicate with MOEX service.";
+            isTickerValid = false;
+            security.Isin = null;
+            security.Name = string.Empty;
+            security.AssetTypeId = 0;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Проверяем, что тикер был проверен и валиден
+        if (isTickerValid != true)
+        {
+            errorMessage = "Please enter a valid ticker and verify it first.";
+            return;
+        }
+
+        if (security.AssetTypeId == 0)
+        {
+            errorMessage = "Asset type is required.";
+            return;
+        }
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/securities", security);
+            if (response.IsSuccessStatusCode)
+            {
+                Navigation.NavigateTo("/securities");
+            }
+            else
+            {
+                errorMessage = "Failed to create security.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private void Cancel() => Navigation.NavigateTo("/securities");
+}

@@ -1,0 +1,76 @@
+﻿@page "/accounts"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<h3>My Accounts</h3>
+
+@if (accounts == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Broker</th>
+                <th>Account Number</th>
+                <th>Comment</th>
+                <th>Currency</th>
+                <th>Commission, %</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var acc in accounts)
+            {
+                <tr>
+                    <td>@acc.BrokerName</td>
+                    <td>@acc.AccountNumber</td>
+                    <td>@acc.Comment</td>
+                    <td>@acc.CurrencyCode</td>
+                    <td>@acc.CommissionRate.ToString("F2")</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => NavigateToEdit(acc.Id)">Edit</button>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteAccount(acc.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<button class="btn btn-success" @onclick="NavigateToCreate">Add Account</button>
+
+@code {
+    private List<AccountDto>? accounts;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+        accounts = await Http.GetFromJsonAsync<List<AccountDto>>("api/accounts");
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            accounts = new List<AccountDto>();
+            errorMessage = $"Failed to load accounts: {ex.Message}";
+        }
+    }
+
+    private void NavigateToCreate() => Navigation.NavigateTo("/accounts/add");
+    private void NavigateToEdit(int id) => Navigation.NavigateTo($"/accounts/edit/{id}");
+
+    private async Task DeleteAccount(int id)
+    {
+        var response = await Http.DeleteAsync($"api/accounts/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            accounts = await Http.GetFromJsonAsync<List<AccountDto>>("api/accounts");
+            StateHasChanged();
+        }
+    }
+}

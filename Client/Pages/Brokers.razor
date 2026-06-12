@@ -1,0 +1,90 @@
+﻿@page "/brokers"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<h3>Brokers</h3>
+
+@if (brokers == null)
+{
+    <p>Loading...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Site</th>
+                <th>Default Commission, %</th>
+                <th>Approved</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var broker in brokers)
+            {
+                <tr>
+                    <td>@broker.Name</td>
+                    <td>@broker.SiteUrl</td>
+                    <td>@broker.DefaultCommissionRate.ToString("F2")</td>
+                    <td>@broker.IsApproved</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-1" @onclick="() => NavigateToEdit(broker.Id)">Edit</button>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteBroker(broker.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<button class="btn btn-success mt-2" @onclick="NavigateToCreate">Add Broker</button>
+
+@code {
+    private List<BrokerDto>? brokers;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBrokers();
+    }
+
+    private async Task LoadBrokers()
+    {
+        try
+        {
+            brokers = await Http.GetFromJsonAsync<List<BrokerDto>>("api/brokers") ?? new List<BrokerDto>();
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            brokers = new List<BrokerDto>();
+            errorMessage = $"Failed to load brokers: {ex.Message}";
+        }
+    }
+
+    private void NavigateToCreate() => Navigation.NavigateTo("/brokers/add");
+    private void NavigateToEdit(int id) => Navigation.NavigateTo($"/brokers/edit/{id}");
+
+    private async Task DeleteBroker(int id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/brokers/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadBrokers();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Delete failed: {ex.Message}";
+        }
+    }
+}

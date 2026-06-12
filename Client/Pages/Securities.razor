@@ -1,0 +1,93 @@
+﻿@page "/securities"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<h3>Securities (Tickers)</h3>
+
+@if (securities == null)
+{
+    <p>Loading...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th>ISIN</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var sec in securities)
+            {
+                <tr>
+                    <td>@sec.Ticker</td>
+                    <td>@sec.Isin</td>
+                    <td>@sec.Name</td>
+                    <td>@sec.AssetTypeName</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteSecurity(sec.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<button class="btn btn-success mt-2" @onclick="NavigateToCreate">Add Security</button>
+
+@code {
+    private List<SecurityDto>? securities;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSecurities();
+    }
+
+    private async Task LoadSecurities()
+    {
+        try
+        {
+            securities = await Http.GetFromJsonAsync<List<SecurityDto>>("api/securities") ?? new();
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            securities = new();
+            errorMessage = $"Failed to load securities: {ex.Message}";
+        }
+    }
+
+    private void NavigateToCreate() => Navigation.NavigateTo("/securities/add");
+
+    private async Task DeleteSecurity(int id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/securities/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadSecurities();
+                StateHasChanged();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Delete failed: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+    }
+}

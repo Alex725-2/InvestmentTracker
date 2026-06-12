@@ -1,0 +1,44 @@
+﻿## .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.userprefs
+*.vs/
+*.DotSettings.user
+.vscode/
+launchSettings.json
+
+## Node
+node_modules/
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+[Bb]in/
+[Oo]bj/
+
+## NuGet
+*.nupkg
+**/packages/*
+
+## Test results
+TestResult.xml
+*.trx
+
+## Docker
+*.tar.gz
+publish/
+
+## Windows
+Thumbs.db
+Desktop.ini
+
+## Temporary files
+*.swp
+*.tmp
+*.bak

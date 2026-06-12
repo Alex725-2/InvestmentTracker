@@ -1,0 +1,108 @@
+﻿@page "/transactions"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<h3>My Transactions</h3>
+
+@if (transactions == null)
+{
+    <p>Loading...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (transactions.Count == 0)
+{
+    <p>No transactions yet.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Security</th>
+                <th>Account</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Commission</th>
+                <th>Total</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in transactions)
+            {
+                var total = t.Quantity * t.Price;
+                <tr>
+                    <td>@t.Date.ToShortDateString()</td>
+                    <td>@(t.Type == TransactionType.Buy ? "Buy" : "Sell")</td>
+                    <td>@t.SecurityTicker</td>
+                    <td>@t.AccountNumber</td>
+                    <td>@t.Quantity</td>
+                    <td>@t.Price.ToString("F2")</td>
+                    <td>@t.Commission.ToString("F2")</td>
+                    <td>@total.ToString("F2")</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteTransaction(t.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<button class="btn btn-success mt-2" @onclick="NavigateToCreate">Add Transaction</button>
+
+@code {
+    private List<TransactionDto>? transactions;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTransactions();
+    }
+
+    private async Task LoadTransactions()
+    {
+        try
+        {
+            transactions = await Http.GetFromJsonAsync<List<TransactionDto>>("api/transactions") ?? new();
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            transactions = new();
+            errorMessage = $"Error loading transactions: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteTransaction(int id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/transactions/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadTransactions();
+                StateHasChanged();
+            }
+            else
+            {
+                errorMessage = "Failed to delete transaction.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private void NavigateToCreate()
+    {
+        Navigation.NavigateTo("/transactions/add");
+    }
+}

@@ -1,0 +1,305 @@
+﻿@page "/"
+@using System.Security.Claims
+@using InvestmentTracker.Shared.Models
+@using InvestmentTracker.Client.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Globalization
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="container-fluid">
+    @if (isAuthenticated)
+    {
+        <!-- Блок авторизованного пользователя -->
+        <div class="row mb-3">
+            <div class="col">
+                <h1 class="d-inline">Welcome, @userName!</h1>
+                <button class="btn btn-danger ms-3" @onclick="Logout">
+                    <span class="oi oi-account-logout"></span> Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Топ-5 позиций -->
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">📈 Top Positions</h5>
+                        @if (topPositions == null)
+                        {
+                            <p class="text-muted">Loading...</p>
+                        }
+                        else if (topPositions.Count == 0)
+                        {
+                            <p class="text-muted">No positions yet.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm table-borderless">
+                                <thead><tr><th>Ticker</th><th>Price</th><th>Change</th><th>Value</th></tr></thead>
+                                <tbody>
+                                    @foreach (var pos in topPositions)
+                                    {
+                                        <tr>
+                                            <td>@pos.Ticker</td>
+                                            <td>@pos.CurrentPrice.ToString("F2")</td>
+                                            <td class="@(pos.ChangePercent >= 0 ? "text-success" : "text-danger")">@(pos.ChangePercent?.ToString("+0.00;-0.00;0.00") ?? "—")</td>
+                                            <td>@pos.TotalValue.ToString("F2")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Общая стоимость -->
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">💰 Total Value</h5>
+                        @if (summary != null)
+                        {
+                            <h3 class="card-text">@summary.TotalMarketValue.ToString("C2")</h3>
+                            <p class="text-muted">Today: <span class="@(summary.TodayPnL >= 0 ? "text-success" : "text-danger")">@summary.TodayPnL.ToString("C2")</span></p>
+                        }
+                        else
+                        {
+
+                            <p class="text-muted">Loading...</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- P&L -->
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">📊 Total P&L</h5>
+                        @if (summary != null)
+                        {
+                            <h3 class="@(summary.TotalPnL >= 0 ? "text-success" : "text-danger")">@summary.TotalPnL.ToString("C2")</h3>
+                        }
+                        else
+                        {
+
+                            <p class="text-muted">Loading...</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Allocation -->
+            <div class="col-md-6 col-lg-6 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">📌 Allocation</h5>
+                        @if (summary?.Allocation != null && summary.Allocation.Count > 0)
+                        {
+                            @foreach (var alloc in summary.Allocation)
+                            {
+                                <div class="mb-2">
+                                    <span>@alloc.AssetTypeName (@alloc.Percentage.ToString("F1")%)</span>
+                                    <div class="progress">
+                                        <div class="progress-bar" style="width: @alloc.Percentage.ToString("F1", CultureInfo.InvariantCulture)%;">@alloc.TotalValue.ToString("C2")</div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted">No data yet.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- История -->
+            <div class="col-md-6 col-lg-6 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">📈 History (7 days)</h5>
+                        @if (history == null)
+                        {
+                            <p class="text-muted">Loading...</p>
+                        }
+                        else if (history.Count == 0)
+                        {
+
+                            <p class="text-muted">No history yet.</p>
+                        }
+                        else
+                        {
+                            <table class="table table-sm table-striped">
+                                <thead><tr><th>Date</th><th>Total Value</th></tr></thead>
+                                <tbody>
+                                    @foreach (var point in history)
+                                    {
+                                        <tr><td>@point.Date.ToShortDateString()</td><td>@point.TotalValue.ToString("C2")</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Гостевое представление -->
+        <div class="text-center mb-4">
+            <h1>Investment Tracker</h1>
+            <p class="lead">Персональный учёт инвестиций с рыночными данными Московской биржи</p>
+            <a class="btn btn-primary" href="/login">Войти</a>
+            <a class="btn btn-outline-secondary ms-2" href="/register">Регистрация</a>
+        </div>
+
+        <div class="row">
+            <!-- Индекс Мосбиржи -->
+            <div class="col-md-3 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-body text-center">
+                        <h5>Индекс Мосбиржи</h5>
+                        <h2>@(market?.IndexValue?.ToString("F2") ?? "—")</h2>
+                        <span class="@(market?.IndexChangePct >= 0 ? "text-success" : "text-danger")">
+                            @(market?.IndexChangePct?.ToString("+0.00;-0.00") ?? "")%
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Статус торгов -->
+            <div class="col-md-3 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-body text-center">
+                        <h5>Статус</h5>
+                        <h4>@market?.TradingStatus</h4>
+                        <small>Закрытие: @market?.SessionCloseTime</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Лидеры роста -->
+            <div class="col-md-3 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5>🚀 Лидеры роста</h5>
+                        @if (market?.TopGainers != null)
+                        {
+                            <ul class="list-unstyled">
+                                @foreach (var m in market.TopGainers)
+                                {
+                                    <li>@m.Ticker <span class="text-success">@m.ChangePct?.ToString("+0.00;-0.00")%</span></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Лидеры падения -->
+            <div class="col-md-3 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5>📉 Лидеры падения</h5>
+                        @if (market?.TopLosers != null)
+                        {
+                            <ul class="list-unstyled">
+                                @foreach (var m in market.TopLosers)
+                                {
+                                    <li>@m.Ticker <span class="text-danger">@m.ChangePct?.ToString("+0.00;-0.00")%</span></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isAuthenticated;
+    private string? userName;
+    private List<TopPositionDto>? topPositions;
+    private DashboardSummaryDto? summary;
+    private List<HistoryPointDto>? history;
+    private MarketSnapshotDto? market;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await UpdateAuthState();
+        if (!isAuthenticated)
+            await LoadMarketSnapshot();
+        else
+            await LoadUserData();
+    }
+
+    private async Task UpdateAuthState()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+        userName = isAuthenticated ? user.FindFirst("fullName")?.Value ?? user.FindFirst(ClaimTypes.Email)?.Value : null;
+    }
+
+    private async Task LoadUserData()
+    {
+        try
+        {
+            topPositions = await Http.GetFromJsonAsync<List<TopPositionDto>>("api/portfolio/top5");
+            summary = await Http.GetFromJsonAsync<DashboardSummaryDto>("api/portfolio/summary");
+            history = await Http.GetFromJsonAsync<List<HistoryPointDto>>("api/portfolio/history");
+        }
+        catch { topPositions = new(); summary = null; history = new(); }
+    }
+
+    private async Task LoadMarketSnapshot()
+    {
+        try
+        {
+            market = await Http.GetFromJsonAsync<MarketSnapshotDto>("api/market/snapshot");
+        }
+        catch { market = new(); }
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        await UpdateAuthState();
+        ClearData();
+        if (isAuthenticated)
+            await LoadUserData();
+        else
+        {
+            await LoadMarketSnapshot();
+        }
+        StateHasChanged();
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.Logout();
+        ClearData();
+        isAuthenticated = false;
+        userName = null;
+        StateHasChanged();
+    }
+
+    private void ClearData()
+    {
+        topPositions = null;
+        summary = null;
+        history = null;
+        market = null;
+    }
+
+    public void Dispose() => AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+}

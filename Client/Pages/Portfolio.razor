@@ -1,0 +1,79 @@
+﻿@page "/portfolio"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+
+<h3>My Portfolio</h3>
+
+@if (positions == null)
+{
+    <p>Loading...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (positions.Count == 0)
+{
+    <p>No positions yet. Add some transactions.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Security</th>
+                <th>Account</th>
+                <th>Quantity</th>
+                <th>Avg. Price</th>
+                <th>Current Price</th>
+                <th>Total Cost</th>
+                <th>Market Value</th>
+                <th>P&L</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var pos in positions)
+            {
+                var cost = pos.Quantity * pos.AveragePurchasePrice;
+                var marketValue = pos.Quantity * (pos.CurrentPrice ?? 0);
+                var pl = marketValue - cost;
+                <tr>
+                    <td>@pos.SecurityTicker</td>
+                    <td>@pos.AccountNumber</td>
+                    <td>@pos.Quantity.ToString("F0")</td>
+                    <td>@pos.AveragePurchasePrice.ToString("F2")</td>
+                    <td>@(pos.CurrentPrice?.ToString("F2") ?? "—")</td>
+                    <td>@cost.ToString("F2")</td>
+                    <td>@(pos.CurrentPrice != null ? marketValue.ToString("F2") : "—")</td>
+                    <td class="@(pl >= 0 ? "text-success" : "text-danger")">
+                        @(pos.CurrentPrice != null ? pl.ToString("F2") : "—")
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<PortfolioItemDto>? positions;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPositions();
+    }
+
+    private async Task LoadPositions()
+    {
+        try
+        {
+            positions = await Http.GetFromJsonAsync<List<PortfolioItemDto>>("api/portfolio") ?? new();
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            positions = new();
+            errorMessage = $"Error loading portfolio: {ex.Message}";
+        }
+    }
+}

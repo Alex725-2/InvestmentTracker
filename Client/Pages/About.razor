@@ -1,0 +1,28 @@
+﻿@page "/about"
+
+<div class="container mt-4">
+    <h2>О проекте</h2>
+    <p><strong>Investment Tracker</strong> — это pet-проект для учёта личных инвестиций на Московской бирже.</p>
+
+    <h4>Технологический стек</h4>
+    <ul>
+        <li><strong>Backend:</strong> ASP.NET Core 8 Web API, Entity Framework Core, MS SQL Server</li>
+        <li><strong>Frontend:</strong> Blazor WebAssembly, Bootstrap 5</li>
+        <li><strong>Интеграции:</strong> MOEX ISS API (котировки и справочники), Hangfire (фоновые задачи)</li>
+        <li><strong>Безопасность:</strong> ASP.NET Core Identity, JWT-аутентификация, авторизация по ролям</li>
+        <li><strong>Архитектура:</strong> модульный монолит (Client, Server, Shared), Clean Architecture, внедрение зависимостей</li>
+    </ul>
+
+    <h4>Архитектура решения</h4>
+    <p>Проект разделён на три сборки:</p>
+    <ul>
+        <li><strong>InvestmentTracker.Client</strong> — Blazor WebAssembly SPA</li>
+        <li><strong>InvestmentTracker.Server</strong> — API + Identity + бизнес-логика</li>
+        <li><strong>InvestmentTracker.Shared</strong> — DTO, общие модели</li>
+    </ul>
+    <p>Данные хранятся в MS SQL Server. Фоновое обновление котировок выполняется через Hangfire каждые 15 минут.</p>
+
+    <p class="mt-3">
+        <a href="https://github.com/your-repo" target="_blank" class="btn btn-outline-primary">Исходный код на GitHub</a>
+    </p>
+</div>

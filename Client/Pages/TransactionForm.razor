@@ -1,0 +1,147 @@
+﻿@page "/transactions/add"
+@using InvestmentTracker.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<h3>New Transaction</h3>
+
+<EditForm Model="dto" OnValidSubmit="HandleSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label>Type</label>
+        <InputSelect @bind-Value="dto.Type" class="form-control">
+            <option value="@TransactionType.Buy">Buy</option>
+            <option value="@TransactionType.Sell">Sell</option>
+        </InputSelect>
+    </div>
+
+    <div class="form-group">
+        <label>Security</label>
+        <InputSelect @bind-Value="dto.SecurityId" class="form-control" @bind-Value:after="OnSecurityChanged">
+            <option value="">Select security...</option>
+            @foreach (var sec in securities)
+            {
+                <option value="@sec.Id">@sec.Ticker</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => dto.SecurityId)" />
+    </div>
+
+    <div class="form-group">
+        <label>Account</label>
+        <InputSelect @bind-Value="dto.AccountId" class="form-control" @bind-Value:after="OnAccountChanged">
+            <option value="">Select account...</option>
+            @foreach (var acc in accounts)
+            {
+                <option value="@acc.Id">@acc.AccountNumber (@acc.BrokerName)</option>
+            }
+        </InputSelect>
+        <ValidationMessage For="@(() => dto.AccountId)" />
+    </div>
+
+    <div class="form-group">
+        <label>Date</label>
+        <InputDate @bind-Value="dto.Date" class="form-control" />
+    </div>
+
+    <div class="form-group">
+        <label>Quantity</label>
+        <InputNumber @bind-Value="dto.Quantity" class="form-control" min="1" />
+    </div>
+
+    <div class="form-group">
+        <label>Price per share</label>
+        <InputNumber @bind-Value="dto.Price" class="form-control" step="0.01" />
+    </div>
+
+    <div class="form-group">
+        <label>Commission</label>
+        <InputNumber @bind-Value="dto.Commission" class="form-control" step="0.01" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save</button>
+    <button type="button" class="btn btn-secondary ms-2" @onclick="Cancel">Cancel</button>
+</EditForm>
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+    private TransactionDto dto = new();
+    private List<SecurityDto>? securities;
+    private List<AccountDto>? accounts;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            securities = await Http.GetFromJsonAsync<List<SecurityDto>>("api/securities") ?? new();
+            accounts = await Http.GetFromJsonAsync<List<AccountDto>>("api/accounts") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load references: {ex.Message}";
+            securities = new();
+            accounts = new();
+        }
+
+        // Если только один счёт, выбираем его и подтягиваем комиссию
+        if (accounts.Count == 1)
+        {
+            dto.AccountId = accounts[0].Id;
+            await OnAccountChanged();
+        }
+    }
+
+    private async Task OnAccountChanged()
+    {
+        var account = accounts?.FirstOrDefault(a => a.Id == dto.AccountId);
+        if (account != null)
+        {
+            dto.Commission = account.CommissionRate;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnSecurityChanged()
+    {
+        try
+        {
+            var price = await Http.GetFromJsonAsync<decimal?>($"api/securities/{dto.SecurityId}/price");
+            if (price.HasValue)
+            {
+                dto.Price = price.Value;
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmit()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/transactions", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Navigation.NavigateTo("/transactions");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Error: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private void Cancel() => Navigation.NavigateTo("/transactions");
+}
