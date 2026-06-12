@@ -1,0 +1,48 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Publish Server project
+      run: dotnet publish InvestmentTracker.Server/InvestmentTracker.Server.csproj -c Release -o publish
+
+    - name: Create archive
+      run: tar -czf publish.tar.gz -C publish .
+
+    - name: Copy archive to VPS
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        source: "publish.tar.gz"
+        target: "/opt/investment-tracker"
+
+    - name: Deploy and restart service
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        script: |
+          cd /opt/investment-tracker
+          # Удаляем старые файлы, кроме базы данных
+          find app -not -name 'investmenttracker.db' -type f -delete
+          find app -mindepth 1 -type d -empty -delete
+          # Распаковываем новый архив
+          tar -xzf publish.tar.gz -C app
+          # Перезапускаем сервис
+          systemctl restart investment-tracker
