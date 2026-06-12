@@ -17,7 +17,7 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Publish Server project
-      run: dotnet publish InvestmentTracker.Server/InvestmentTracker.Server.csproj -c Release -o publish
+      run: dotnet publish **/InvestmentTracker.Server.csproj -c Release -o publish
 
     - name: Create archive
       run: tar -czf publish.tar.gz -C publish .
