@@ -124,6 +124,9 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddHttpClient<MoexService>();
 builder.Services.AddScoped<QuoteUpdateService>();
 
+// Фоновое обновление котировок (вместо Hangfire для Production)
+builder.Services.AddHostedService<QuoteBackgroundService>();
+
 var app = builder.Build();
 
 // Применение миграций (автоматически) и создание базы данных при необходимости
