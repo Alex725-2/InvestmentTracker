@@ -126,6 +126,7 @@
     {
         try
         {
+            dto.DateString = dto.Date.ToString("yyyy-MM-dd");
             var response = await Http.PostAsJsonAsync("api/transactions", dto);
             if (response.IsSuccessStatusCode)
             {

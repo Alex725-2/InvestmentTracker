@@ -13,5 +13,6 @@
         public decimal Price { get; set; }
         public decimal Commission { get; set; }
         public decimal TotalAmount => Quantity * Price; // без комиссии
+        public string DateString { get; set; } = string.Empty;
     }
 }
