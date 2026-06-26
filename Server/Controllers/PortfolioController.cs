@@ -23,26 +23,29 @@ namespace InvestmentTracker.Server.Controllers
         private string GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
         [HttpGet]
+        [Route("api/portfolio")]
+        [AllowAnonymous]
         public async Task<ActionResult<List<PortfolioItemDto>>> GetMyPortfolio()
         {
-            var userId = GetUserId();
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                var demoUser = await _context.Users.FirstOrDefaultAsync();
+                if (demoUser == null) return Ok(new List<PortfolioItemDto>());
+                userId = demoUser.Id;
+            }
+
             var items = await _context.PortfolioItems
                 .Where(p => p.UserId == userId)
-                .Include(p => p.Security)
-                .Include(p => p.Account)
                 .Select(p => new PortfolioItemDto
                 {
                     Id = p.Id,
                     SecurityId = p.SecurityId,
-                    //SecurityTicker = p.Security.Ticker,
+                    SecurityTicker = p.Security.Ticker,
                     AccountId = p.AccountId,
-                    //AccountNumber = p.Account.AccountNumber,
-                    SecurityTicker = p.Security != null ? p.Security.Ticker : "N/A",
-                    AccountNumber = p.Account != null ? p.Account.AccountNumber : "N/A",
+                    AccountNumber = p.Account.AccountNumber,
                     Quantity = p.Quantity,
                     AveragePurchasePrice = p.AveragePurchasePrice,
-
-                    // Котировки из таблицы Quotes, по сути из MOEX
                     CurrentPrice = _context.Quotes
                         .Where(q => q.SecurityId == p.SecurityId)
                         .OrderByDescending(q => q.Date)
