@@ -117,32 +117,35 @@ namespace InvestmentTracker.Server.Controllers
         {
             var userId = GetUserId();
 
+            // Загружаем все позиции пользователя в память
             var positions = await _context.PortfolioItems
                 .Where(p => p.UserId == userId)
-                .OrderByDescending(p => p.Quantity * (_context.Quotes
-                    .Where(q => q.SecurityId == p.SecurityId)
-                    .OrderByDescending(q => q.Date)
-                    .Select(q => (decimal?)q.Price)
-                    .FirstOrDefault() ?? 0m))
-                .Take(5)
-                .Select(p => new TopPositionDto
+                .Select(p => new
                 {
                     Ticker = p.Security.Ticker,
+                    Quantity = p.Quantity,
                     CurrentPrice = _context.Quotes
                         .Where(q => q.SecurityId == p.SecurityId)
                         .OrderByDescending(q => q.Date)
                         .Select(q => (decimal?)q.Price)
-                        .FirstOrDefault() ?? 0m,
-                    ChangePercent = null,
-                    TotalValue = p.Quantity * (_context.Quotes
-                        .Where(q => q.SecurityId == p.SecurityId)
-                        .OrderByDescending(q => q.Date)
-                        .Select(q => (decimal?)q.Price)
-                        .FirstOrDefault() ?? 0m)
+                        .FirstOrDefault() ?? 0m
                 })
                 .ToListAsync();
 
-            return Ok(positions);
+            // Сортируем в памяти и берём топ-5
+            var top5 = positions
+                .Select(p => new TopPositionDto
+                {
+                    Ticker = p.Ticker,
+                    CurrentPrice = p.CurrentPrice,
+                    ChangePercent = null,
+                    TotalValue = p.Quantity * p.CurrentPrice
+                })
+                .OrderByDescending(p => p.TotalValue)
+                .Take(5)
+                .ToList();
+
+            return Ok(top5);
         }
 
         // История портфеля
@@ -152,16 +155,31 @@ namespace InvestmentTracker.Server.Controllers
             var userId = GetUserId();
             var fromDate = DateTime.UtcNow.AddDays(-7);
 
-            var history = await _context.Quotes
+            // Загружаем все котировки, связанные с позициями пользователя
+            var quotes = await _context.Quotes
                 .Where(q => q.Date >= fromDate)
-                .Join(_context.PortfolioItems.Where(p => p.UserId == userId),
-                      q => q.SecurityId,
-                      p => p.SecurityId,
-                      (q, p) => new { q.Date, Value = p.Quantity * q.Price })
-                .GroupBy(x => x.Date.Date)
-                .Select(g => new HistoryPointDto { Date = g.Key, TotalValue = g.Sum(x => x.Value) })
-                .OrderBy(x => x.Date)
+                .Where(q => _context.PortfolioItems
+                    .Any(p => p.UserId == userId && p.SecurityId == q.SecurityId))
+                .Select(q => new
+                {
+                    q.Date,
+                    Value = q.Price * _context.PortfolioItems
+                        .Where(p => p.UserId == userId && p.SecurityId == q.SecurityId)
+                        .Select(p => p.Quantity)
+                        .FirstOrDefault()
+                })
                 .ToListAsync();
+
+            // Группируем в памяти
+            var history = quotes
+                .GroupBy(x => x.Date.Date)
+                .Select(g => new HistoryPointDto
+                {
+                    Date = g.Key,
+                    TotalValue = g.Sum(x => x.Value)
+                })
+                .OrderBy(x => x.Date)
+                .ToList();
 
             return Ok(history);
         }
