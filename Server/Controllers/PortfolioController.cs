@@ -69,7 +69,7 @@ namespace InvestmentTracker.Server.Controllers
                 .Select(p => new
                 {
                     p.Security.Ticker,
-                    AssetTypeName = p.Security.AssetType.Name,
+                    AssetTypeName = p.Security.AssetType != null ? p.Security.AssetType.Name : "Unknown",
                     p.Quantity,
                     p.AveragePurchasePrice,
                     CurrentPrice = _context.Quotes
