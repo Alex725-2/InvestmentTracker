@@ -13,16 +13,20 @@
 <div class="container-fluid">
     @if (isAuthenticated)
     {
-        <!-- Блок авторизованного пользователя -->
         <div class="row mb-3">
             <div class="col">
                 <h1 class="d-inline">Welcome, @userName!</h1>
-                <span style="color: gray; font-size: 0.8em;">v2</span>
+                <span style="color: gray; font-size: 0.8em;">v4</span>
                 <button class="btn btn-danger ms-3" @onclick="Logout">
                     <span class="oi oi-account-logout"></span> Logout
                 </button>
             </div>
         </div>
+
+        @if (!string.IsNullOrEmpty(globalError))
+        {
+            <div class="alert alert-danger">@globalError</div>
+        }
 
         <div class="row">
             <!-- Топ-5 позиций -->
@@ -30,7 +34,11 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h5 class="card-title">📈 Top Positions</h5>
-                        @if (topPositions == null)
+                        @if (topError != null)
+                        {
+                            <div class="alert alert-danger small">@topError</div>
+                        }
+                        else if (topPositions == null)
                         {
                             <p class="text-muted">Loading...</p>
                         }
@@ -64,14 +72,17 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h5 class="card-title">💰 Total Value</h5>
-                        @if (summary != null)
+                        @if (summaryError != null)
+                        {
+                            <div class="alert alert-danger small">@summaryError</div>
+                        }
+                        else if (summary != null)
                         {
                             <h3 class="card-text">@summary.TotalMarketValue.ToString("C2")</h3>
                             <p class="text-muted">Today: <span class="@(summary.TodayPnL >= 0 ? "text-success" : "text-danger")">@summary.TodayPnL.ToString("C2")</span></p>
                         }
                         else
                         {
-
                             <p class="text-muted">Loading...</p>
                         }
                     </div>
@@ -83,13 +94,16 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h5 class="card-title">📊 Total P&L</h5>
-                        @if (summary != null)
+                        @if (summaryError != null)
+                        {
+                            <div class="alert alert-danger small">@summaryError</div>
+                        }
+                        else if (summary != null)
                         {
                             <h3 class="@(summary.TotalPnL >= 0 ? "text-success" : "text-danger")">@summary.TotalPnL.ToString("C2")</h3>
                         }
                         else
                         {
-
                             <p class="text-muted">Loading...</p>
                         }
                     </div>
@@ -101,7 +115,11 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h5 class="card-title">📌 Allocation</h5>
-                        @if (summary?.Allocation != null && summary.Allocation.Count > 0)
+                        @if (summaryError != null)
+                        {
+                            <div class="alert alert-danger small">@summaryError</div>
+                        }
+                        else if (summary?.Allocation != null && summary.Allocation.Count > 0)
                         {
                             @foreach (var alloc in summary.Allocation)
                             {
@@ -126,13 +144,16 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-body">
                         <h5 class="card-title">📈 History (7 days)</h5>
-                        @if (history == null)
+                        @if (historyError != null)
+                        {
+                            <div class="alert alert-danger small">@historyError</div>
+                        }
+                        else if (history == null)
                         {
                             <p class="text-muted">Loading...</p>
                         }
                         else if (history.Count == 0)
                         {
-
                             <p class="text-muted">No history yet.</p>
                         }
                         else
@@ -234,6 +255,11 @@
     private List<HistoryPointDto>? history;
     private MarketSnapshotDto? market;
 
+    private string? globalError;
+    private string? topError;
+    private string? summaryError;
+    private string? historyError;
+
     protected override async Task OnInitializedAsync()
     {
         AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
@@ -254,13 +280,45 @@
 
     private async Task LoadUserData()
     {
+        globalError = null;
+        topError = null;
+        summaryError = null;
+        historyError = null;
+
+        // top5
         try
         {
-            topPositions = await Http.GetFromJsonAsync<List<TopPositionDto>>("api/portfolio/top5");
-            summary = await Http.GetFromJsonAsync<DashboardSummaryDto>("api/portfolio/summary");
-            history = await Http.GetFromJsonAsync<List<HistoryPointDto>>("api/portfolio/history");
+            topPositions = await Http.GetFromJsonAsync<List<TopPositionDto>>("api/portfolio/top5") ?? new();
         }
-        catch { topPositions = new(); summary = null; history = new(); }
+        catch (Exception ex)
+        {
+            topError = $"Top5 error: {ex.Message}";
+            topPositions = new();
+        }
+
+        // summary
+        try
+        {
+            summary = await Http.GetFromJsonAsync<DashboardSummaryDto>("api/portfolio/summary");
+        }
+        catch (Exception ex)
+        {
+            summaryError = $"Summary error: {ex.Message}";
+            summary = null;
+        }
+
+        // history
+        try
+        {
+            history = await Http.GetFromJsonAsync<List<HistoryPointDto>>("api/portfolio/history") ?? new();
+        }
+        catch (Exception ex)
+        {
+            historyError = $"History error: {ex.Message}";
+            history = new();
+        }
+
+        StateHasChanged();
     }
 
     private async Task LoadMarketSnapshot()
@@ -269,7 +327,10 @@
         {
             market = await Http.GetFromJsonAsync<MarketSnapshotDto>("api/market/snapshot");
         }
-        catch { market = new(); }
+        catch
+        {
+            market = new();
+        }
     }
 
     private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
@@ -279,9 +340,7 @@
         if (isAuthenticated)
             await LoadUserData();
         else
-        {
             await LoadMarketSnapshot();
-        }
         StateHasChanged();
     }
 
@@ -300,6 +359,10 @@
         summary = null;
         history = null;
         market = null;
+        globalError = null;
+        topError = null;
+        summaryError = null;
+        historyError = null;
     }
 
     public void Dispose() => AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
