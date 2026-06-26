@@ -123,3 +123,9 @@ Swagger UI доступен по адресу /swagger
 Проект распространяется под лицензией MIT. См. файл [LICENSE](LICENSE.txt).
 
 **Автор:** Александр Литвин ([LinkedIn](https://www.linkedin.com/in/alexander-litvin-0420a51b6/) | [Email](mailto:litvin_alexander@mail.ru))
+
+## 🎬 Демонстрация работы
+
+[![Investment Tracker Demo](docs/images/home-guest.png)](https://drive.google.com/file/d/10BN_53PCPWZ912DTVMTX-pBVS18-oJLz/view?usp=drive_link)
+
+Нажмите на изображение выше, чтобы посмотреть видео (2 минуты).

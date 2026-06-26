@@ -1,11 +1,11 @@
-﻿using InvestmentTracker.Server.Data;
+﻿using System.Security.Claims;
+using InvestmentTracker.Server.Data;
 using InvestmentTracker.Server.Models;
 using InvestmentTracker.Server.Services;
 using InvestmentTracker.Shared.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace InvestmentTracker.Server.Controllers
 {
@@ -15,7 +15,6 @@ namespace InvestmentTracker.Server.Controllers
     public class TransactionsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-
         private readonly MoexService _moexService;
 
         public TransactionsController(ApplicationDbContext context, MoexService moexService)
@@ -26,7 +25,6 @@ namespace InvestmentTracker.Server.Controllers
 
         private string GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-        // Получить все транзакции текущего пользователя
         [HttpGet]
         public async Task<ActionResult<List<TransactionDto>>> GetAll()
         {
@@ -43,7 +41,8 @@ namespace InvestmentTracker.Server.Controllers
                     SecurityTicker = t.Security.Ticker,
                     AccountId = t.AccountId,
                     AccountNumber = t.Account.AccountNumber,
-                    Date = t.Date,
+                    // Явно указываем, что дата в UTC
+                    Date = DateTime.SpecifyKind(t.Date, DateTimeKind.Utc),
                     Type = t.Type,
                     Quantity = t.Quantity,
                     Price = t.Price,
@@ -54,7 +53,6 @@ namespace InvestmentTracker.Server.Controllers
             return Ok(transactions);
         }
 
-        // Получить одну транзакцию
         [HttpGet("{id}")]
         public async Task<ActionResult<TransactionDto>> GetById(int id)
         {
@@ -73,7 +71,7 @@ namespace InvestmentTracker.Server.Controllers
                 SecurityTicker = t.Security.Ticker,
                 AccountId = t.AccountId,
                 AccountNumber = t.Account.AccountNumber,
-                Date = t.Date,
+                Date = DateTime.SpecifyKind(t.Date, DateTimeKind.Utc),
                 Type = t.Type,
                 Quantity = t.Quantity,
                 Price = t.Price,
@@ -81,13 +79,11 @@ namespace InvestmentTracker.Server.Controllers
             });
         }
 
-        // Создание сделки
         [HttpPost]
         public async Task<ActionResult<TransactionDto>> Create(TransactionDto dto)
         {
             var userId = GetUserId();
 
-            // Проверить существование счёта и бумаги
             var account = await _context.Accounts
                 .FirstOrDefaultAsync(a => a.Id == dto.AccountId && a.UserId == userId);
             if (account == null)
@@ -97,7 +93,6 @@ namespace InvestmentTracker.Server.Controllers
             if (security == null)
                 return BadRequest("Security not found.");
 
-            // Проверить, что при продаже хватает остатка
             if (dto.Type == TransactionType.Sell)
             {
                 var position = await _context.PortfolioItems
@@ -109,13 +104,13 @@ namespace InvestmentTracker.Server.Controllers
                     return BadRequest("Insufficient quantity for sale.");
             }
 
-            // Создать транзакцию
             var transaction = new Transaction
             {
                 UserId = userId,
                 SecurityId = dto.SecurityId,
                 AccountId = dto.AccountId,
-                Date = dto.Date,
+                // Сохраняем дату как UTC
+                Date = DateTime.SpecifyKind(dto.Date, DateTimeKind.Utc),
                 Type = dto.Type,
                 Quantity = dto.Quantity,
                 Price = dto.Price,
@@ -124,7 +119,6 @@ namespace InvestmentTracker.Server.Controllers
 
             _context.Transactions.Add(transaction);
 
-            // Обновить/создать PortfolioItem
             var portfolioItem = await _context.PortfolioItems
                 .FirstOrDefaultAsync(p => p.UserId == userId
                     && p.SecurityId == dto.SecurityId
@@ -146,26 +140,17 @@ namespace InvestmentTracker.Server.Controllers
                 }
                 else
                 {
-                    // Пересчёт средней цены покупки
                     var totalCost = portfolioItem.Quantity * portfolioItem.AveragePurchasePrice
                                     + dto.Quantity * dto.Price;
                     portfolioItem.Quantity += dto.Quantity;
                     portfolioItem.AveragePurchasePrice = totalCost / portfolioItem.Quantity;
                 }
             }
-            else // Sell
+            else
             {
-                // Проверка уже была, просто уменьшаем количество
                 portfolioItem!.Quantity -= dto.Quantity;
-                // Средняя цена покупки не меняется при продаже
-                if (portfolioItem.Quantity == 0)
-                {
-                    // Можно удалить позицию, но необязательно – оставим с нулевым количеством
-                }
             }
 
-
-            // Запрашиваем текущую цену с биржи для этой бумаги
             var currentPrice = await _moexService.GetCurrentPriceAsync(security.Ticker);
             if (currentPrice.HasValue)
             {
@@ -185,7 +170,6 @@ namespace InvestmentTracker.Server.Controllers
             return CreatedAtAction(nameof(GetById), new { id = transaction.Id }, dto);
         }
 
-        // Удаление сделки (откат изменений)
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
@@ -195,7 +179,6 @@ namespace InvestmentTracker.Server.Controllers
 
             if (transaction == null) return NotFound();
 
-            // Найти позицию
             var portfolioItem = await _context.PortfolioItems
                 .FirstOrDefaultAsync(p => p.UserId == userId
                     && p.SecurityId == transaction.SecurityId
@@ -204,16 +187,13 @@ namespace InvestmentTracker.Server.Controllers
             if (portfolioItem == null)
                 return BadRequest("Portfolio position not found.");
 
-            // Обратное действие
             if (transaction.Type == TransactionType.Buy)
             {
-                // Откат покупки: уменьшаем количество и восстанавливаем среднюю цену
                 if (portfolioItem.Quantity < transaction.Quantity)
                     return BadRequest("Cannot undo buy – insufficient quantity.");
 
                 if (portfolioItem.Quantity == transaction.Quantity)
                 {
-                    // Позиция станет нулевой, можно удалить
                     _context.PortfolioItems.Remove(portfolioItem);
                 }
                 else
@@ -224,11 +204,9 @@ namespace InvestmentTracker.Server.Controllers
                     portfolioItem.AveragePurchasePrice = totalCost / portfolioItem.Quantity;
                 }
             }
-            else // Откат продажи
+            else
             {
-                // Восстанавливаем количество и среднюю цену (средняя не менялась при продаже, так что просто увеличиваем количество)
                 portfolioItem.Quantity += transaction.Quantity;
-                // Если позиция была удалена при полной продаже, она снова создастся
             }
 
             _context.Transactions.Remove(transaction);
