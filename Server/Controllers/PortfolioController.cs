@@ -1,10 +1,9 @@
-﻿using InvestmentTracker.Server.Data;
-using InvestmentTracker.Server.Services;
-using InvestmentTracker.Shared.Models;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
+using InvestmentTracker.Server.Data;
+using InvestmentTracker.Shared.Models;
 
 namespace InvestmentTracker.Server.Controllers
 {
@@ -22,10 +21,10 @@ namespace InvestmentTracker.Server.Controllers
 
         private string GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
+        // Основной список позиций (страница портфолио) – временно AllowAnonymous для демо
         [HttpGet]
-        [Route("api/portfolio")]
         [AllowAnonymous]
-        public async Task<ActionResult<List<PortfolioItemDto>>> GetMyPortfolio()
+        public async Task<ActionResult<List<PortfolioItemDto>>> Get()
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId))
@@ -57,55 +56,12 @@ namespace InvestmentTracker.Server.Controllers
             return Ok(items);
         }
 
-        [HttpGet("top5")]
-        public async Task<ActionResult<List<TopPositionDto>>> GetTop5()
-        {
-            var userId = GetUserId();
-
-            // Получаем позиции с текущей стоимостью
-            var positions = await _context.PortfolioItems
-                .Where(p => p.UserId == userId)
-                .Include(p => p.Security)
-                .Select(p => new
-                {
-                    p.Security.Ticker,
-                    p.Quantity,
-                    MarketValue = p.Quantity * (_context.Quotes
-                        .Where(q => q.SecurityId == p.SecurityId)
-                        .OrderByDescending(q => q.Date)
-                        .Select(q => (decimal?)q.Price)
-                        .FirstOrDefault() ?? 0m)
-                })
-                .OrderByDescending(p => p.MarketValue) // <-- убрали ?? 0m, так как MarketValue уже decimal
-                .Take(5)
-                .ToListAsync();
-
-            var moexService = HttpContext.RequestServices.GetRequiredService<MoexService>();
-            var result = new List<TopPositionDto>();
-
-            foreach (var pos in positions)
-            {
-                decimal currentPrice = pos.Quantity > 0 ? pos.MarketValue / pos.Quantity : 0;
-                decimal? changePct = await moexService.GetLastChangePercentAsync(pos.Ticker);
-
-                result.Add(new TopPositionDto
-                {
-                    Ticker = pos.Ticker,
-                    CurrentPrice = currentPrice,
-                    ChangePercent = changePct,
-                    TotalValue = pos.MarketValue
-                });
-            }
-
-            return Ok(result);
-        }
-
+        // Сводка для дашборда
         [HttpGet("summary")]
         public async Task<ActionResult<DashboardSummaryDto>> GetDashboardSummary()
         {
             var userId = GetUserId();
 
-            // Все позиции пользователя с текущей стоимостью
             var positions = await _context.PortfolioItems
                 .Where(p => p.UserId == userId)
                 .Include(p => p.Security)
@@ -113,7 +69,7 @@ namespace InvestmentTracker.Server.Controllers
                 .Select(p => new
                 {
                     p.Security.Ticker,
-                    p.Security.AssetType.Name,
+                    AssetTypeName = p.Security.AssetType.Name,
                     p.Quantity,
                     p.AveragePurchasePrice,
                     CurrentPrice = _context.Quotes
@@ -127,14 +83,10 @@ namespace InvestmentTracker.Server.Controllers
             var totalMarketValue = positions.Sum(p => p.Quantity * p.CurrentPrice);
             var totalCost = positions.Sum(p => p.Quantity * p.AveragePurchasePrice);
             var totalPnL = totalMarketValue - totalCost;
-
-            // Today PnL: для простоты возьмём изменение последней цены к вчерашнему закрытию (если есть)
-            // Пока поставим 0, потом можно доработать.
             decimal todayPnL = 0;
 
-            // Распределение по типам активов
             var allocation = positions
-                .GroupBy(p => p.Name)
+                .GroupBy(p => p.AssetTypeName)
                 .Select(g => new
                 {
                     AssetTypeName = g.Key,
@@ -159,12 +111,43 @@ namespace InvestmentTracker.Server.Controllers
             });
         }
 
+        // Топ-5 позиций
+        [HttpGet("top5")]
+        public async Task<ActionResult<List<TopPositionDto>>> GetTop5()
+        {
+            var userId = GetUserId();
+
+            var positions = await _context.PortfolioItems
+                .Where(p => p.UserId == userId)
+                .Select(p => new TopPositionDto
+                {
+                    Ticker = p.Security.Ticker,
+                    CurrentPrice = _context.Quotes
+                        .Where(q => q.SecurityId == p.SecurityId)
+                        .OrderByDescending(q => q.Date)
+                        .Select(q => (decimal?)q.Price)
+                        .FirstOrDefault() ?? 0m,
+                    ChangePercent = null,
+                    TotalValue = p.Quantity * (_context.Quotes
+                        .Where(q => q.SecurityId == p.SecurityId)
+                        .OrderByDescending(q => q.Date)
+                        .Select(q => (decimal?)q.Price)
+                        .FirstOrDefault() ?? 0m)
+                })
+                .OrderByDescending(p => p.TotalValue)
+                .Take(5)
+                .ToListAsync();
+
+            return Ok(positions);
+        }
+
+        // История портфеля
         [HttpGet("history")]
         public async Task<ActionResult<List<HistoryPointDto>>> GetHistory()
         {
-            // Пока возвращаем данные за последние 7 дней на основе Quotes (упрощённо)
             var userId = GetUserId();
             var fromDate = DateTime.UtcNow.AddDays(-7);
+
             var history = await _context.Quotes
                 .Where(q => q.Date >= fromDate)
                 .Join(_context.PortfolioItems.Where(p => p.UserId == userId),
@@ -175,6 +158,7 @@ namespace InvestmentTracker.Server.Controllers
                 .Select(g => new HistoryPointDto { Date = g.Key, TotalValue = g.Sum(x => x.Value) })
                 .OrderBy(x => x.Date)
                 .ToListAsync();
+
             return Ok(history);
         }
     }
