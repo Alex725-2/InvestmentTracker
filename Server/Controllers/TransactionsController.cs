@@ -1,11 +1,12 @@
-﻿using System.Security.Claims;
-using InvestmentTracker.Server.Data;
+﻿using InvestmentTracker.Server.Data;
 using InvestmentTracker.Server.Models;
 using InvestmentTracker.Server.Services;
 using InvestmentTracker.Shared.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace InvestmentTracker.Server.Controllers
 {
@@ -41,8 +42,7 @@ namespace InvestmentTracker.Server.Controllers
                     SecurityTicker = t.Security.Ticker,
                     AccountId = t.AccountId,
                     AccountNumber = t.Account.AccountNumber,
-                    // Явно указываем, что дата в UTC
-                    Date = DateTime.SpecifyKind(t.Date, DateTimeKind.Utc),
+                    Date = t.Date,
                     Type = t.Type,
                     Quantity = t.Quantity,
                     Price = t.Price,
@@ -71,7 +71,7 @@ namespace InvestmentTracker.Server.Controllers
                 SecurityTicker = t.Security.Ticker,
                 AccountId = t.AccountId,
                 AccountNumber = t.Account.AccountNumber,
-                Date = DateTime.SpecifyKind(t.Date, DateTimeKind.Utc),
+                Date = t.Date,
                 Type = t.Type,
                 Quantity = t.Quantity,
                 Price = t.Price,
@@ -109,12 +109,11 @@ namespace InvestmentTracker.Server.Controllers
                 UserId = userId,
                 SecurityId = dto.SecurityId,
                 AccountId = dto.AccountId,
-                // Сохраняем дату как UTC
-                Date = DateTime.SpecifyKind(dto.Date, DateTimeKind.Utc),
+                Date = dto.Date.Date,
                 Type = dto.Type,
                 Quantity = dto.Quantity,
-                Price = dto.Price,
-                Commission = dto.Commission
+                Price = Math.Round(dto.Price, 2),
+                Commission = Math.Round(dto.Commission, 2)
             };
 
             _context.Transactions.Add(transaction);
