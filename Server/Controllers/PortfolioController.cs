@@ -119,6 +119,12 @@ namespace InvestmentTracker.Server.Controllers
 
             var positions = await _context.PortfolioItems
                 .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.Quantity * (_context.Quotes
+                    .Where(q => q.SecurityId == p.SecurityId)
+                    .OrderByDescending(q => q.Date)
+                    .Select(q => (decimal?)q.Price)
+                    .FirstOrDefault() ?? 0m))
+                .Take(5)
                 .Select(p => new TopPositionDto
                 {
                     Ticker = p.Security.Ticker,
@@ -134,8 +140,6 @@ namespace InvestmentTracker.Server.Controllers
                         .Select(q => (decimal?)q.Price)
                         .FirstOrDefault() ?? 0m)
                 })
-                .OrderByDescending(p => p.TotalValue)
-                .Take(5)
                 .ToListAsync();
 
             return Ok(positions);
