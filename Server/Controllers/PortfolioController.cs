@@ -117,7 +117,6 @@ namespace InvestmentTracker.Server.Controllers
         {
             var userId = GetUserId();
 
-            // Загружаем все позиции пользователя в память
             var positions = await _context.PortfolioItems
                 .Where(p => p.UserId == userId)
                 .Select(p => new
@@ -132,20 +131,28 @@ namespace InvestmentTracker.Server.Controllers
                 })
                 .ToListAsync();
 
-            // Сортируем в памяти и берём топ-5
-            var top5 = positions
-                .Select(p => new TopPositionDto
+            // Получаем MoexService из DI
+            var moexService = HttpContext.RequestServices.GetRequiredService<Services.MoexService>();
+
+            var top5 = new List<TopPositionDto>();
+            foreach (var pos in positions)
+            {
+                var change = await moexService.GetChangePercentSafeAsync(pos.Ticker);
+                top5.Add(new TopPositionDto
                 {
-                    Ticker = p.Ticker,
-                    CurrentPrice = p.CurrentPrice,
-                    ChangePercent = null,
-                    TotalValue = p.Quantity * p.CurrentPrice
-                })
+                    Ticker = pos.Ticker,
+                    CurrentPrice = pos.CurrentPrice,
+                    ChangePercent = change,
+                    TotalValue = pos.Quantity * pos.CurrentPrice
+                });
+            }
+
+            var result = top5
                 .OrderByDescending(p => p.TotalValue)
                 .Take(5)
                 .ToList();
 
-            return Ok(top5);
+            return Ok(result);
         }
 
         // История портфеля

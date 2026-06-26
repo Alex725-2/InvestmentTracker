@@ -169,7 +169,7 @@ namespace InvestmentTracker.Server.Services
             public int? AssetTypeId { get; set; }
         }
 
-        public async Task<decimal?> GetLastChangePercentAsync(string ticker)
+        public async Task<decimal?> GetChangePercentSafeAsync(string ticker)
         {
             try
             {
@@ -178,27 +178,35 @@ namespace InvestmentTracker.Server.Services
                 using var doc = await JsonDocument.ParseAsync(stream);
 
                 var root = doc.RootElement;
-                if (!root.TryGetProperty("marketdata", out var marketdata))
-                    return null;
-
-                if (!marketdata.TryGetProperty("columns", out var columns) ||
-                    !marketdata.TryGetProperty("data", out var data) ||
+                if (!root.TryGetProperty("marketdata", out var md) ||
+                    !md.TryGetProperty("columns", out var columns) ||
+                    !md.TryGetProperty("data", out var data) ||
                     data.GetArrayLength() == 0)
                     return null;
 
-                int idx = FindColumnIndex(columns, "LASTCHANGEPRCNT");
-                if (idx < 0) return null;
+                var cols = columns.EnumerateArray().Select(c => c.GetString()).ToArray();
+                int idx = -1;
+                for (int i = 0; i < cols.Length; i++)
+                {
+                    if (string.Equals(cols[i], "LASTCHANGEPRCNT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        idx = i;
+                        break;
+                    }
+                }
 
-                var val = data[0][idx];
-                if (val.ValueKind == JsonValueKind.Number && val.TryGetDecimal(out var pct))
-                    return pct;
-                if (val.ValueKind == JsonValueKind.String && decimal.TryParse(val.GetString(), out pct))
-                    return pct;
+                if (idx == -1) return null;
+
+                var value = data[0][idx];
+                if (value.ValueKind == JsonValueKind.Number)
+                    return value.GetDecimal();
+                if (value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), out var parsed))
+                    return parsed;
                 return null;
             }
             catch
             {
-                return null;
+                return null; // любая ошибка – просто прочерк
             }
         }
 
